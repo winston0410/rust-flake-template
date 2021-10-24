@@ -4,11 +4,6 @@
   inputs = {
     nixpkgs = { url = "github:nixos/nixpkgs/nixos-unstable"; };
 
-    mkNodePackage = {
-      url = "github:winston0410/mkNodePackage/develop";
-      inputs = { nixpkgs.follows = "nixpkgs"; };
-    };
-
     flake-utils = {
       url = "github:numtide/flake-utils";
       inputs = { nixpkgs.follows = "nixpkgs"; };
@@ -20,23 +15,30 @@
     };
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = (import nixpkgs {
           inherit system;
           overlays = [ rust-overlay.overlay ];
         });
+        crateName = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.name;
+        getBin = package: "${package}/bin/${crateName}";
+        defaultPackage =
+          (pkgs.callPackage ./package.nix { inherit crateName; });
       in {
-        packages = {
-            identity = (pkgs.callPackage ./identity.nix {});
+        inherit defaultPackage;
+        packages = { default = defaultPackage; };
+        defaultApp = {
+          type = "app";
+          program = "${defaultPackage}";
+        };
+        apps = {
+          default = self.defaultApp.${system};
         };
         devShell = (({ pkgs, ... }:
           pkgs.mkShell {
-            buildInputs = with pkgs; [
-              cargo
-              rust-bin.stable.latest.default
-            ];
+            buildInputs = with pkgs; [ cargo rust-bin.stable.latest.default ];
 
             shellHook = "";
           }) { inherit pkgs; });
